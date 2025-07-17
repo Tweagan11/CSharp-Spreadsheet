@@ -1,0 +1,34 @@
+﻿@page "/"
+
+<PageTitle>CS 3500</PageTitle>
+
+<h1>Design Decisions and Comments to Evaluators</h1>
+<br />
+<br />
+
+<h2>Comments to Evaluators:</h2>
+<br />
+    <p>
+	Cells must be clicked twice to enter the contents editor.
+</p>
+<h2>Design Decisions:</h2>
+    <br />
+    <p>
+
+        We decided to implement the following design decisions:
+        <ul>
+            <li>
+            To encapsulate any spreadsheet options into a drop-down menu, including loading, saving, clearing, naming and resizing. This makes the GUI look cleaner.
+            </li>
+            <li>
+            To add the ability to edit a cells contents by clicking into a cell directly.
+            </li>
+            <li>
+            To add the ability to change the name of the spreadsheet and have that name become the default file save name. A spreadsheet's name is also loaded in the load method.
+            </li>
+        </ul>
+    </p>
+
+<environment names="Development">
+    <script src="_framework/aspnetcore-browser-refresh.js"></script>
+</environment>

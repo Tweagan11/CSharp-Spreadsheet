@@ -1,0 +1,335 @@
+﻿@page "/spreadsheet"
+@rendermode InteractiveAuto
+@inject IJSRuntime JS  // <remarks> Allows the "communication"/use of javascript </remarks>
+@inject NavigationManager Navigator
+
+@namespace SpreadsheetNS  
+
+@using System.Diagnostics
+
+<NavigationLock ConfirmExternalNavigation="true"
+                OnBeforeInternalNavigation="OnBeforeLeavePage" />
+
+<PageTitle>Starter Code</PageTitle>
+
+@* <remarks> Example of how to have two pages or an "alert" GUI. </remarks> *@
+@if (SaveGUIView)
+{
+    <label for="SavefileName">Name:</label>
+    <input id="SaveFileName" @bind="SaveFileName" type="text">
+
+    <br/>
+
+    <button class="btn btn-primary" @onclick="HandleSaveFile">Save</button>
+    <button class="btn btn-primary" @onclick="() => ShowHideSaveGUI(false)">Cancel</button>
+}
+else
+{
+    if(ResizeGUI)
+    {
+        <div class="modal modal-sheet position-static d-block bg-body-secondary p-4 py-md-5" tabindex="-1" role="dialog" id="modalSheet">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content rounded-4 shadow">
+                    <div class="modal-header border-bottom-0">
+                        <h1 class="modal-title fs-5">Resize Spreadsheet</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @onclick="() => ShowHideResizeGUI(false)"></button>
+                    </div>
+                    <div class="modal-body py-0">
+                        <p>Change Spreadsheet Size using Boxes Below:</p>
+                        <label for="RowsInput"> Number of Rows: </label>
+                        <input type="number" name="RowsInput" id="RowsInput" @bind=tempRow min="1" max="99" />
+                        <label for="ColsInput"> Number of Cols: </label>
+                        <input type="number" name="ColsInput" id="ColsInput" @bind=tempCol min="1" max="26" />
+                    </div>
+                    <div class="modal-footer flex-column align-items-stretch w-100 gap-2 pb-3 border-top-0">
+                        <button type="button" class="btn btn-lg btn-primary" @onclick="() => ResizeSpreadsheet()">Resize</button>
+                        <button type="button" class="btn btn-lg btn-secondary" data-bs-dismiss="modal" @onclick="() => ShowHideResizeGUI(false)">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    if (RenameGUI)
+    {
+        <div class="modal modal-sheet position-static d-block bg-body-secondary p-4 py-md-5" tabindex="-1" role="dialog" id="modalSheet">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content rounded-4 shadow">
+                    <div class="modal-header border-bottom-0">
+                        <h1 class="modal-title fs-5">Rename Spreadsheet</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @onclick="() => ShowHideRenameGUI(false)"></button>
+                    </div>
+                    <div class="modal-body py-0">
+                        <label for="nameInput"> New Spreadsheet Name: </label>
+                        <input type="text" name="nameInput" id="nameInput" @bind="tempName" />
+                    </div>
+                    <div class="modal-footer flex-column align-items-stretch w-100 gap-2 pb-3 border-top-0">
+                        <button type="button" class="btn btn-lg btn-primary" @onclick="() => RenameSpreadsheet()">Rename</button>
+                        <button type="button" class="btn btn-lg btn-secondary" data-bs-dismiss="modal" @onclick="() => ShowHideRenameGUI(false)">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    
+    <div id="FileMenu">
+        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#spreadsheetOptions" aria-controls="spreadsheetOptions" aria-expanded="true" aria-label="Toggle navigation">
+            <span>Spreadsheet Options</span>
+        </button>
+
+        <div class="navbar-collapse collapse" id="spreadsheetOptions">
+            <ul class="dropdown-menu position-static d-grid gap-1 p-2 rounded-3 mx-0 shadow w-220px" data-bs-theme="light" >
+                <li><button class="dropdown-item rounded-2" @onclick="HandleClear">Clear Spreadsheet</button></li>
+                <li><button class="dropdown-item rounded-2" @onclick="() => ShowHideSaveGUI(true)">Save Spreadsheet</button></li>
+                <li><label for="inputwidget" class="dropdown-item rounded-2">Load Spreadsheet</label></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item rounded-2" @onclick="() => ShowHideResizeGUI(true)">Change Spreadsheet Size</a></li>
+                <li><a class="dropdown-item rounded-2" @onclick="() => ShowHideRenameGUI(true)">Change Spreadsheet Name</a></li>
+            </ul>
+        </div>
+
+        <h1 class="SpreadsheetTitle">@(spreadsheet.Name == "default" ? "Simple Spreadsheet GUI" : spreadsheet.Name) @(HasSpreadSheetChanged() ? "*" : "")</h1>
+
+        <div id="hideUglyWidget">
+            <InputFile id="inputwidget" name="abc" class="custom-input" type="file" OnChange="HandleLoadFile" />
+        </div>
+    </div>
+
+    <div id="toolbar">
+        <div>
+            <!--<label for="CellName">Cell Name:</label> -->
+            <input name="CellName" id="CellName" disabled value="@CellNameFromRowCol(currentRow, currentCol)" />
+        </div>
+        <div>
+            <!--<label for="CellValue">Value:</label> -->
+            <input name="CellValue" id="FormulaValue" disabled value="@CellsBackingStore[currentRow,currentCol]" placeholder="Cell Value" />
+        </div>
+        <div>
+            <!--<label for="FormulaContent">Content:</label> -->
+            <input name="FormulaContent" id="FormulaContent" value="@InputWidgetBackingStore" @ref="FormulaContentEditableInput" @onchange="ChangeSpreadsheetCellValue" placeholder="Cell Contents" />
+        </div>
+    </div>
+
+    <div class="container" style="cursor: pointer;">
+        <div class="table-container">
+            <div class="scrollable">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr class="fixed-header">
+                            <th scope="col">&nbsp;</th>
+                            @if (rowSize > 99) rowSize = 99;
+                            @if (rowSize < 1) rowSize = 1;
+                            @if (colSize > 26) colSize = 26;
+                            @if (colSize < 1) colSize = 1;
+                            @for ( int col = 0; col < colSize; col++ )
+                            {
+                                <th scope="col">@Alphabet[col]</th>
+                            }
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @for ( int row = 0; row < rowSize; row++ )
+                        {
+                            <tr style="padding:0px !important;">
+                                <th style="padding:0px !important;" scope="row" class="fixed-column">@(row + 1)</th>
+                                @for ( int col = 0; col < colSize; col++ )
+                                {
+                                    int r = row;
+                                    int c = col;
+                                    <td class="@CellsClassBackingStore[r,c]"  @onclick="() => FocusMainInput(r,c)">
+                                            <span title="@CellsBackingStore[r,c]" class="SpreadsheetCell">@CellsBackingStore[r, c]</span>
+                                            <input id="@CellsClassBackingStore[r,c]" class="CellInput" value="@InputWidgetBackingStore" @ref="CellsRefBackingStore[r,c]" @onchange=ChangeSpreadsheetCellValue />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code
+{
+    // <remark> 
+    //   The code in this section should be 100% GUI related. Otherwise
+    //   place the code in the .cs file.
+    // </remark>
+
+    /// <summary>
+    ///   Direct reference to the html element (so we can focus it).
+    /// </summary>
+    private ElementReference FormulaContentEditableInput;
+
+    /// <summary>
+    ///   The value of the main input widget where users type
+    ///   their formulas and numbers and strings.
+    /// </summary>
+    private string InputWidgetBackingStore = "";
+
+    /// <summary>
+    ///   The name of the file that we want to download to.
+    /// </summary>
+    private string SaveFileName = "Spreadsheet.sprd";
+
+    /// <summary>
+    /// Current row selected by user.
+    /// </summary>
+    private int currentRow = 0;
+
+    /// <summary>
+    /// Current row selected by user.
+    /// </summary>
+    private int currentCol = 0;
+
+    /// <summary>
+    /// Sets previous row to use in HighlightCurrentCell.
+    /// </summary>
+    private int prevRow = 0;
+
+    /// <summary>
+    /// Sets previous col to use in HighlightCurrentCell.
+    /// </summary>
+    private int prevCol = 0;
+
+    /// <summary>
+    /// Sets temp row to use in ResizeSpreadsheet.
+    /// </summary>
+    private int tempRow = rowSize;
+
+    /// <summary>
+    /// Sets temp col to use in ResizeSpreadsheet.
+    /// </summary>
+    private int tempCol = colSize;
+
+    /// <summary>
+    /// Allows user to update the view size of the Grid.
+    /// </summary>
+    private static int rowSize = 10;
+
+    /// <summary>
+    /// Allows user to update the view size of the Grid.
+    /// </summary>
+    private static int colSize = 10;
+
+    /// <summary>
+    /// Used in renaming the Spreadsheet.
+    /// </summary>
+    private string tempName = string.Empty;
+
+    /// <summary>
+    ///   When a cell is clicked on, put the focus on the main
+    ///   widget and update the toolbar.
+    /// </summary>
+    /// <param name="row"></param>
+    /// <param name="col"></param>
+    private void FocusMainInput( int row, int col )
+    {
+        prevRow = currentRow;
+        prevCol = currentCol;
+        currentRow = row;
+        currentCol = col;
+
+        UpdateToolbar();
+        HighlightCell(row, col);
+
+        CellsRefBackingStore[row,col].FocusAsync(); // <remarks> move focus back to input widget. </remarks>
+    }
+
+    /// <summary>
+    ///   Make the value and content display/input of the tool bar match the
+    ///   spreadsheet.
+    /// </summary>
+    private void UpdateToolbar()
+    {
+        string cellName = CellNameFromRowCol(currentRow, currentCol);
+        InputWidgetBackingStore = spreadsheet.GetCellStringForm(cellName); 
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    ///   Outline the current cell. erase outlines from everyone else.
+    /// </summary>
+    /// <param name="theRow">the cell's row.</param>
+    /// <param name="theCol">the cell's col.</param>
+    private void HighlightCell(int theRow, int theCol)
+    {
+        CellsClassBackingStore[prevRow, prevCol] = string.Empty;
+        CellsClassBackingStore[theRow, theCol] = "selected";
+    }
+
+    /// <summary>
+    ///   When the header widget for cell contents is changed, update
+    ///   the spreadsheet.
+    /// </summary>
+    /// <param name="eventArgs"></param>
+    private void ChangeSpreadsheetCellValue( ChangeEventArgs eventArgs )
+    {
+
+        string newInput = eventArgs.Value?.ToString() ?? "oops";
+        InputWidgetBackingStore = newInput;
+
+        HandleUpdateCellInSpreadsheet( newInput, currentRow, currentCol );
+
+        UpdateToolbar();
+    }
+
+    /// <summary>
+    ///   What to do before the browser is allowed to leave the page.
+    /// </summary>
+    /// <param name="context"></param>
+    /// <returns></returns>
+    private async Task OnBeforeLeavePage( LocationChangingContext context )
+    {
+        if ( spreadsheet.Changed )
+        {
+            var isConfirmed = await JS.InvokeAsync<bool>(
+                "confirm",
+                "Are you sure you want to navigate away?");
+
+            if (!isConfirmed)
+            {
+                context.PreventNavigation();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Change Grid Size.
+    /// </summary>
+    private void ResizeSpreadsheet()
+    {
+        // Check Min and Max of RowSize
+        if (tempRow > 99)
+        {
+            rowSize = 99;
+        }
+        else if (tempRow < 1)
+        {
+            rowSize = 1;
+        }
+        else
+        {
+            rowSize = tempRow;
+        }
+
+        // Check Min (1) and Max (26) of ColSize
+        if (colSize > 26)
+        {
+            colSize = 26;
+        }
+        else if (tempCol < 1)
+        {
+            colSize = 1;
+        }
+        else
+        {
+            colSize = tempCol;
+        }
+
+        ShowHideResizeGUI(false);
+    }
+}
